@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transportation Control Tower</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- นำเข้าไฟล์ JS (สำหรับตั้งค่า Tailwind) -->
+    <?!= include('Dashboard_JS'); ?>
+    
+    <!-- นำเข้าไฟล์ CSS -->
+    <?!= include('Dashboard_CSS'); ?>
+</head>
+<body class="bg-earth-bg text-earth-text min-h-screen overflow-x-hidden">
+
+    <!-- Navbar / Header -->
+    <header class="bg-earth-surface shadow-sm sticky top-0 z-20">
+        <div class="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-light tracking-wide text-earth-primary" style="font-weight: 300;">DEPARTURE <span class="font-bold">CONTROL</span></h1>
+            </div>
+            <div class="flex gap-4 items-center">
+                <div class="text-right">
+                    <p class="text-sm font-medium text-earth-text" id="currentDate">--</p>
+                    <p class="text-xs text-earth-success tracking-wide" id="syncStatus">Live from Sheets</p>
+                </div>
+                <button onclick="fetchData()" class="p-2.5 bg-earth-bg rounded-full hover:bg-earth-primary hover:text-white transition-all duration-300 shadow-sm" title="Refresh Data">
+                    🔄
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-6 py-8">
+        
+        <!-- 1. Executive Overview (KPI Cards) -->
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-earth-surface p-6 rounded-xl shadow-sm">
+                <h3 class="text-earth-muted text-xs uppercase tracking-wider mb-2">Total Pax</h3>
+                <p class="text-4xl font-light text-earth-primary transition-all duration-500" id="kpiPax">-</p>
+                <p class="text-xs text-earth-muted mt-2">Guests & Vendors</p>
+            </div>
+            
+            <div class="bg-earth-surface p-6 rounded-xl shadow-sm">
+                <h3 class="text-earth-muted text-xs uppercase tracking-wider mb-2">Estimated Vehicles</h3>
+                <p class="text-4xl font-light text-earth-primary transition-all duration-500" id="kpiVehicles">-</p>
+                <p class="text-xs text-earth-muted mt-2">6 Pax / Van</p>
+            </div>
+
+            <div class="bg-earth-surface p-6 rounded-xl shadow-sm md:col-span-2">
+                <h3 class="text-earth-muted text-xs uppercase tracking-wider mb-2">Confirmation Rate</h3>
+                <div class="flex items-end gap-4">
+                    <p class="text-4xl font-light text-earth-success transition-all duration-500" id="kpiConfirmRate">-%</p>
+                    <div class="flex-1 pb-2">
+                        <div class="w-full bg-gray-100 rounded-full h-1.5">
+                            <div class="bg-earth-primary h-1.5 rounded-full transition-all duration-1000" id="confirmBar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Visual Analytics -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <div class="bg-earth-surface p-6 rounded-xl shadow-sm">
+                <h3 class="text-earth-text font-medium text-sm uppercase tracking-wide mb-4">Status Distribution</h3>
+                <div class="relative h-64 flex justify-center items-center">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-earth-surface p-6 rounded-xl shadow-sm lg:col-span-2">
+                <h3 class="text-earth-text font-medium text-sm uppercase tracking-wide mb-4">Pickup Time Density</h3>
+                <div class="relative h-64">
+                    <canvas id="densityChart"></canvas>
+                </div>
+            </div>
+            <div class="bg-earth-surface p-6 rounded-xl shadow-sm lg:col-span-3">
+                <h3 class="text-earth-text font-medium text-sm uppercase tracking-wide mb-4">Upcoming Departure Volume</h3>
+                <div class="relative h-64">
+                    <canvas id="volumeChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. Manifest -->
+        <section class="bg-earth-surface rounded-xl shadow-sm overflow-hidden relative">
+            <div class="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                <h3 class="text-lg font-medium text-earth-primary tracking-wide">MANIFEST</h3>
+                <div class="relative w-full md:w-96">
+                    <input type="text" id="searchInput" placeholder="Search records..." class="w-full pl-10 pr-4 py-2 bg-earth-bg border-none rounded-lg focus:outline-none focus:ring-1 focus:ring-earth-primary transition-colors text-sm">
+                    <span class="absolute left-3 top-2 text-earth-muted">🔍</span>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-white text-earth-muted text-xs tracking-wider">
+                            <th class="py-4 px-6 font-medium">Name</th>
+                            <th class="py-4 px-6 font-medium">Type</th>
+                            <th class="py-4 px-6 font-medium">Room No</th>
+                            <th class="py-4 px-6 font-medium">Flight</th>
+                            <th class="py-4 px-6 font-medium">Pick Up Time</th>
+                            <th class="py-4 px-6 font-medium">Status</th>
+                            <th class="py-4 px-6 font-medium text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="text-sm divide-y divide-gray-50">
+                        <!-- Data injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Slide-out Side Panel -->
+    <div id="sidePanel" class="fixed inset-y-0 right-0 w-full md:w-[450px] bg-earth-surface shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out z-50 flex flex-col border-l border-gray-100">
+        <div class="p-6 flex justify-between items-center border-b border-gray-100 bg-white">
+            <h2 class="text-sm tracking-widest font-bold text-earth-primary uppercase">Details</h2>
+            <button onclick="closePanel()" class="text-earth-muted hover:text-earth-primary text-2xl font-light leading-none transition-colors">&times;</button>
+        </div>
+        <div class="p-6 flex-1 overflow-y-auto" id="panelContent">
+            <!-- Content -->
+        </div>
+        <div class="p-6 border-t border-gray-100 bg-white">
+            <button onclick="closePanel()" class="w-full py-3 bg-earth-primary text-white font-medium tracking-wide rounded-lg hover:bg-opacity-90 transition-all">Close Panel</button>
+        </div>
+    </div>
+
+    <div id="overlay" onclick="closePanel()" class="fixed inset-0 bg-black bg-opacity-10 hidden z-40 transition-opacity backdrop-blur-sm"></div>
+
+</body>
+</html>

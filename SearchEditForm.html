@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?!= include('SearchEditForm_CSS'); ?>
+  </head>
+  <body>
+    
+    <div class="search-box">
+      <input type="text" id="searchKey" placeholder="Search Name, Room No, Code (Guest & Vendor)..." oninput="filterLocalData()">
+      <button class="btn-add" onclick="prepareAddNew()">Add New</button>
+    </div>
+    
+    <div id="status">Loading...</div>
+    
+    <select id="resultSelect" onchange="loadData()" disabled>
+      <option value="">-- Loading... --</option>
+    </select>
+
+    <div class="form-section" id="editSection">
+      
+      <div class="row" id="sheetTypeRow" style="display:none; margin-bottom: 20px; background: #fbfaf9; padding: 15px; border-radius: 6px; border: 1px solid #e0e0e0; border-left: 4px solid #691d27;">
+        <div class="col">
+          <label style="color:#691d27;">Save to Sheet:</label>
+          <select id="SheetType" style="margin-bottom:0; border-color:#e0e0e0; padding: 10px 12px;">
+            <option value="Guest">Guest</option>
+            <option value="Vendor">Vendor</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col" style="flex: 1;"><label>Code:</label><input type="text" id="Code" readonly style="background:#f0f0f0; color:#888; cursor:not-allowed;" placeholder="Auto Gen"></div>
+        <div class="col" style="flex: 2;"><label>Name:</label><input type="text" id="Name"></div>
+        <div class="col" style="flex: 1;"><label>Pax:</label><input type="text" id="Pax"></div>
+      </div>
+      
+      <div class="row">
+        <div class="col"><label>Room No:</label><input type="text" id="RoomNo"></div>
+        <div class="col"><label>Phone No:</label><input type="text" id="PhoneNo"></div>
+      </div>
+
+      <div class="sec-title">ARRIVAL</div>
+      <div class="row">
+        <div class="col"><label>Arr Date:</label><input type="date" id="ArrivalDate"></div>
+        <div class="col"><label>Arr Flight:</label><input type="text" id="ArrivalFlight" placeholder="Ex. TG102"></div>
+        <div class="col"><label>Arr Time:</label><input type="text" id="ArrivalTime" placeholder="Ex. 14:30" oninput="autoFormatTime(this)" maxlength="5"></div>
+      </div>
+      <div class="row">
+        <div class="col"><label>Arr R/M:</label><input type="text" id="ArrRM" placeholder="Ex. Have 3 large bags..."></div>
+      </div>
+
+      <div class="sec-title">DEPARTURE</div>
+      <div class="row">
+        <div class="col"><label>Dep Date:</label><input type="date" id="DepartureDate"></div>
+        <div class="col"><label>Dep Flight:</label><input type="text" id="DepartureFlight" placeholder="Ex. FD301"></div>
+        <div class="col"><label>Dep Time:</label><input type="text" id="DepartureTime" placeholder="Ex. 08:15" oninput="autoFormatTime(this)" maxlength="5"></div>
+      </div>
+
+      <div class="row">
+        <div class="col"><label>Pick Up Time:</label><input type="text" id="PickUptime" placeholder="Ex. 06:00" oninput="autoFormatTime(this)" maxlength="5"></div>
+        <div class="col"><label>Status:</label>
+          <select id="Status" class="status-select">
+            <option value="">-- None --</option>
+            <!-- แก้ไขลบเว้นวรรคส่วนเกินด้านหลังค่า Value และ Text ออกแล้ว -->
+            <option value="Confirmed">Confirmed</option>
+            <option value="Cancelled">Cancelled</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="col"><label>Dep R/M:</label><input type="text" id="DepRM" placeholder="Ex. Have 3 large bags..."></div>
+      </div>
+
+      <button class="btn-save" id="saveNewBtn" onclick="doSaveNew()" style="display:none; background:#691d27; box-shadow: 0 2px 5px rgba(105, 29, 39, 0.2);">Save New</button>
+      <button class="btn-save" id="updateBtn" onclick="doUpdate()">Update</button>
+      <button class="btn-delete" id="deleteBtn" onclick="doDelete()">Delete</button>
+
+    </div>
+    <?!= include('SearchEditForm_JS'); ?>
+    
+  </body>
+</html>

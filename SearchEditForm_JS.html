@@ -1,0 +1,162 @@
+<script>
+   // ==========================================
+   // เพิ่มฟังก์ชันป้องกัน XSS
+   // ==========================================
+   function escapeHtml(str) {
+     if (str === null || str === undefined) return '';
+     return String(str)
+       .replace(/&/g, '&amp;')
+       .replace(/</g, '&lt;')
+       .replace(/>/g, '&gt;')
+       .replace(/"/g, '&quot;')
+       .replace(/'/g, '&#39;');
+   }
+
+   let allRecords = [];
+   let filteredRecords = [];
+   let selectedRecord = null;
+   let filterTimeout = null;
+   
+   window.onload = function() { reloadAllData(); };
+   
+   function reloadAllData() {
+     document.getElementById('status').innerText = "Loading Data from Server...";
+     document.getElementById('status').style.color = "#691d27";
+     document.getElementById('resultSelect').disabled = true;
+     google.script.run.withSuccessHandler(function(results) {
+       allRecords = results.map(r => { r.searchString = Object.values(r).join(" ").toLowerCase(); return r; });
+       document.getElementById('searchKey').value = "";
+       filteredRecords = allRecords;
+       document.getElementById('status').innerText = `Ready (${results.length} List)`;
+       document.getElementById('status').style.color = "#4a6b53";
+       document.getElementById('resultSelect').disabled = false;
+       renderDropdown();
+     }).searchRecords("");
+   }
+   
+   function filterLocalData() {
+     clearTimeout(filterTimeout);
+     filterTimeout = setTimeout(() => {
+       let kw = document.getElementById('searchKey').value.trim().toLowerCase();
+       document.getElementById('editSection').style.display = 'none';
+       if (!kw) { filteredRecords = allRecords; } else { filteredRecords = allRecords.filter(r => r.searchString.includes(kw)); }
+       renderDropdown();
+     }, 250);
+   }
+   
+   function renderDropdown() {
+      let select = document.getElementById('resultSelect');
+      if (filteredRecords.length === 0) { select.innerHTML = '<option value="">-- No Data --</option>'; document.getElementById('status').innerText = "No Data"; document.getElementById('status').style.color = "#8b0000"; return; }
+      let kw = document.getElementById('searchKey').value.trim();
+      if (kw) { document.getElementById('status').innerText = `Founded ${filteredRecords.length}`; document.getElementById('status').style.color = "#691d27"; } else { document.getElementById('status').innerText = `Ready (Choose ${filteredRecords.length} List or Search)`; document.getElementById('status').style.color = "#4a6b53"; }
+      
+      let optionsHtml = '<option value="">-- Choose --</option>';
+      filteredRecords.forEach((r, idx) => { 
+          // ครอบตัวแปรด้วย escapeHtml เพื่อป้องกันโค้ดอันตรายรันตอนแสดงผล
+          optionsHtml += `<option value="${idx}">${escapeHtml(r.displayLabel)} [${escapeHtml(r.sheetType)}]</option>`; 
+      });
+      select.innerHTML = optionsHtml;
+   }
+   
+   function autoFormatTime(obj) { let val = obj.value.replace(/\D/g, ''); if (val.length > 4) val = val.substring(0, 4); if (val.length >= 3) { obj.value = val.substring(0, 2) + ":" + val.substring(2); } else { obj.value = val; } }
+   function formatDateForInput(str) { if (!str) return ""; let m = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/); if (m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; return ""; }
+   function formatTimeForInput(str) { if (!str || str === " " || str === "-") return ""; let m = str.match(/^(\d{1,2})[:.](\d{2})/); if (m) return `${String(m[1]).padStart(2, '0')}:${m[2]}`; return str; }
+   function formatDateForSave(str) { if (!str) return ""; let p = str.split('-'); if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`; return str; }
+   
+   function prepareAddNew() {
+     document.getElementById('resultSelect').value = "";
+     selectedRecord = null;
+     ['Code', 'Name', 'Pax', 'RoomNo', 'ArrivalFlight', 'DepartureFlight', 'ArrRM', 'DepRM', 'PhoneNo', 'ArrivalDate', 'DepartureDate', 'ArrivalTime', 'DepartureTime', 'PickUptime', 'Status'].forEach(key => { if(document.getElementById(key)) document.getElementById(key).value = ""; });
+     document.getElementById('Code').value = "Auto Gen";
+     document.getElementById('sheetTypeRow').style.display = 'flex';
+     document.getElementById('saveNewBtn').style.display = 'block';
+     document.getElementById('updateBtn').style.display = 'none';
+     document.getElementById('deleteBtn').style.display = 'none';
+     document.getElementById('editSection').style.display = 'block';
+     document.getElementById('status').innerText = "Add Information";
+     document.getElementById('status').style.color = "#691d27";
+   }
+   
+   function loadData() {
+      let idx = document.getElementById('resultSelect').value;
+      if (idx === "") { document.getElementById('editSection').style.display = 'none'; return; }
+      selectedRecord = filteredRecords[idx];
+      ['Code', 'Name', 'Pax', 'RoomNo', 'ArrivalFlight', 'DepartureFlight', 'ArrRM', 'DepRM', 'PhoneNo'].forEach(key => { document.getElementById(key).value = selectedRecord[key] || ""; });
+      let statusVal = selectedRecord['Status'] || ""; let statusEl = document.getElementById('Status');
+      if (statusVal && !Array.from(statusEl.options).some(opt => opt.value === statusVal)) { statusEl.add(new Option(statusVal, statusVal)); }
+      statusEl.value = statusVal;
+      document.getElementById('ArrivalDate').value = formatDateForInput(selectedRecord['ArrivalDate']); document.getElementById('DepartureDate').value = formatDateForInput(selectedRecord['DepartureDate']); document.getElementById('ArrivalTime').value = formatTimeForInput(selectedRecord['ArrivalTime']); document.getElementById('DepartureTime').value = formatTimeForInput(selectedRecord['DepartureTime']); document.getElementById('PickUptime').value = formatTimeForInput(selectedRecord['PickUptime']);
+      document.getElementById('sheetTypeRow').style.display = 'none'; document.getElementById('saveNewBtn').style.display = 'none'; document.getElementById('updateBtn').style.display = 'block'; document.getElementById('deleteBtn').style.display = 'block'; document.getElementById('editSection').style.display = 'block';
+      document.getElementById('status').innerText = `Loading: ${selectedRecord.Name} (${selectedRecord.sheetType})`; document.getElementById('status').style.color = "#4a6b53";
+   }
+
+   function setFormStatus(msg, isError = false) {
+      const statusEl = document.getElementById('status');
+      statusEl.innerText = msg;
+      statusEl.style.color = isError ? "#8b0000" : "#4a6b53";
+   }
+
+   function validateForm() {
+      let nameField = document.getElementById('Name').value.trim();
+      let arrDate = document.getElementById('ArrivalDate').value;
+      let depDate = document.getElementById('DepartureDate').value;
+      if (!nameField) return "Please input Guest/Vendor Name.";
+      if (!arrDate && !depDate) return "Please input at least Arrival or Departure Date.";
+      return null;
+   }
+
+   function doSaveNew() {
+      let errorMsg = validateForm();
+      if (errorMsg) { setFormStatus("Error: " + errorMsg, true); return; }
+      let btn = document.getElementById('saveNewBtn');
+      btn.disabled = true; btn.innerText = "Saving...";
+      setFormStatus("Saving Data to Server...");
+      let newRecord = { sheetType: document.getElementById('SheetType').value };
+      ['Name', 'Pax', 'RoomNo', 'ArrivalFlight', 'DepartureFlight', 'ArrRM', 'DepRM', 'PhoneNo', 'Status'].forEach(key => { newRecord[key] = document.getElementById(key).value.trim(); });
+      newRecord['ArrivalDate'] = formatDateForSave(document.getElementById('ArrivalDate').value); newRecord['DepartureDate'] = formatDateForSave(document.getElementById('DepartureDate').value); newRecord['ArrivalTime'] = document.getElementById('ArrivalTime').value; newRecord['DepartureTime'] = document.getElementById('DepartureTime').value; newRecord['PickUptime'] = document.getElementById('PickUptime').value;
+      google.script.run
+      .withSuccessHandler(function(res) {
+         setFormStatus(res.msg || res);
+         btn.innerText = "Saved!";
+         if (res.uuid) {
+            newRecord.uuid = res.uuid; newRecord.displayLabel = `[Auto Gen] ${newRecord.Name} (Room: ${newRecord.RoomNo || "-"})`; newRecord.searchString = Object.values(newRecord).join(" ").toLowerCase(); allRecords.push(newRecord);
+         }
+         setTimeout(() => { document.getElementById('editSection').style.display = 'none'; btn.innerText = "Save New"; btn.disabled = false; document.getElementById('searchKey').value = ""; filterLocalData(); }, 1500);
+      })
+      .withFailureHandler(function(err) { setFormStatus("System Error: " + err.message, true); btn.innerText = "Save New"; btn.disabled = false; })
+      .addNewRecord(newRecord);
+   }
+
+   function doUpdate() {
+      let errorMsg = validateForm();
+      if (errorMsg) { setFormStatus("Error: " + errorMsg, true); return; }
+      let btn = document.getElementById('updateBtn'); let delBtn = document.getElementById('deleteBtn');
+      btn.disabled = true; delBtn.disabled = true; btn.innerText = "Updating...";
+      setFormStatus("Updating Record...");
+      ['Name', 'Pax', 'RoomNo', 'ArrivalFlight', 'DepartureFlight', 'ArrRM', 'DepRM', 'PhoneNo', 'Status'].forEach(key => { selectedRecord[key] = document.getElementById(key).value.trim(); });
+      selectedRecord['ArrivalDate'] = formatDateForSave(document.getElementById('ArrivalDate').value); selectedRecord['DepartureDate'] = formatDateForSave(document.getElementById('DepartureDate').value); selectedRecord['ArrivalTime'] = document.getElementById('ArrivalTime').value; selectedRecord['DepartureTime'] = document.getElementById('DepartureTime').value; selectedRecord['PickUptime'] = document.getElementById('PickUptime').value;
+      google.script.run
+      .withSuccessHandler(function(res) {
+         setFormStatus("Successfully Updated!"); btn.innerText = "Done!";
+         selectedRecord.displayLabel = `[${selectedRecord.Code}] ${selectedRecord.Name} (Room: ${selectedRecord.RoomNo || "-"})`; selectedRecord.searchString = Object.values(selectedRecord).join(" ").toLowerCase();
+         setTimeout(() => { btn.innerText = "Update"; btn.disabled = false; delBtn.disabled = false; filterLocalData(); }, 1500);
+      })
+      .withFailureHandler(function(err) { setFormStatus("Update Failed: " + err.message, true); btn.innerText = "Update"; btn.disabled = false; delBtn.disabled = false; })
+      .updateEditedRecord(selectedRecord);
+   }
+
+   function doDelete() {
+      let isConfirm = confirm(`Are you sure you want to delete?`);
+      if (!isConfirm) return;
+      let updateBtn = document.getElementById('updateBtn'); let delBtn = document.getElementById('deleteBtn');
+      updateBtn.disabled = true; delBtn.disabled = true; delBtn.innerText = "Deleting...";
+      google.script.run
+      .withSuccessHandler(function(res) {
+         setFormStatus(res, true); delBtn.innerText = "Deleted!";
+         allRecords = allRecords.filter(r => r.uuid !== selectedRecord.uuid);
+         setTimeout(() => { document.getElementById('editSection').style.display = 'none'; delBtn.innerText = "Delete"; updateBtn.disabled = false; delBtn.disabled = false; filterLocalData(); }, 1000);
+      })
+      .withFailureHandler(function(err) { setFormStatus("Error: " + err.message, true); delBtn.innerText = "Delete"; updateBtn.disabled = false; delBtn.disabled = false; })
+      .deleteRecord(selectedRecord);
+   }
+</script>

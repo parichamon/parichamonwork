@@ -1,0 +1,290 @@
+<!-- Config ธีมสี Luxury Minimal (#691d27) สำหรับ Tailwind -->
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                colors: {
+                    earth: {
+                        bg: '#fbfaf9',      // Off-white / ครีมอ่อนๆ
+                        surface: '#ffffff', // ขาวล้วน
+                        primary: '#691d27', // เบอร์กันดี (สีหลัก)
+                        secondary: '#9a757a',// เบอร์กันดีอ่อน
+                        accent: '#d4af37',  // ทอง (หรูหรา)
+                        text: '#2d2d2d',    // เทาเข้มเกือบดำ
+                        muted: '#888888',   // เทากลาง
+                        success: '#4a6b53', // เขียวเข้มพรีเมียม
+                        warning: '#b8860b', // ทองเข้ม
+                        danger: '#8b0000'   // แดงเข้ม
+                    }
+                },
+                fontFamily: {
+                    sans: ['"Segoe UI"', 'Inter', 'Helvetica', 'sans-serif'],
+                }
+            }
+        }
+    }
+</script>
+
+<!-- Logic หลักของ Dashboard -->
+<script>
+    // ==========================================
+    // เพิ่มฟังก์ชันป้องกัน XSS
+    // ==========================================
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    let realData = [];
+    let chartInstances = { status: null, density: null, volume: null };
+    const colors = {
+        primary: '#691d27', secondary: '#9a757a', accent: '#d4af37', 
+        success: '#4a6b53', warning: '#b8860b', danger: '#8b0000', bg: '#fbfaf9'
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('currentDate').innerText = new Date().toLocaleDateString('en-US', options);
+        fetchData(); 
+        
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = realData.filter(d => 
+                d.name.toLowerCase().includes(term) || 
+                d.room.toLowerCase().includes(term) ||
+                d.flight.toLowerCase().includes(term) ||
+                d.id.toLowerCase().includes(term)
+            );
+            renderTable(filtered);
+        });
+    });
+
+    function fetchData() {
+        document.getElementById('syncStatus').innerText = "Syncing...";
+        document.getElementById('syncStatus').className = "text-xs tracking-wide text-earth-warning";
+        document.getElementById('tableBody').innerHTML = `<tr><td colspan="7" class="py-16 text-center"><div class="loader"></div><p class="mt-6 text-earth-muted text-xs uppercase tracking-widest">Fetching Data</p></td></tr>`;
+
+        google.script.run.withSuccessHandler((results) => {
+            realData = results.map(r => ({
+                id: r.Code || 'N/A', rawId: r.uuid, type: r.sheetType, name: r.Name || 'Unknown', pax: parseInt(r.Pax) || 0,
+                room: r.RoomNo || '-', flight: r.DepartureFlight || '-', time: r.DepartureTime || '-', pickup: r.PickUptime || '-',
+                depDate: r.DepartureDate || '-', status: r.Status || 'Pending', arrNote: r.ArrRM || '', depNote: r.DepRM || ''
+            }));
+            
+            document.getElementById('syncStatus').innerText = "Live";
+            document.getElementById('syncStatus').className = "text-xs tracking-wide text-earth-success";
+
+            renderKPIs(); renderCharts(); renderTable(realData);
+        }).withFailureHandler((err) => {
+            document.getElementById('syncStatus').innerText = "Sync Error";
+            document.getElementById('syncStatus').className = "text-xs tracking-wide text-earth-danger";
+            document.getElementById('tableBody').innerHTML = `<tr><td colspan="7" class="py-12 text-center text-earth-danger text-sm">Error: ${err.message}</td></tr>`;
+        }).searchRecordsCached(""); 
+    }
+
+    function renderKPIs() {
+        let totalPax = 0, activeCount = 0, confirmedCount = 0;
+        realData.forEach(d => {
+            if (!d.status.includes('Cancelled') && !d.status.includes('❌')) {
+                totalPax += d.pax; activeCount++;
+                if (d.status.includes('Confirmed') || d.status.includes('✅')) confirmedCount++;
+            }
+        });
+        const confirmRate = activeCount === 0 ? 0 : Math.round((confirmedCount / activeCount) * 100);
+        
+        if(document.getElementById('kpiPax')) document.getElementById('kpiPax').innerText = totalPax;
+        if(document.getElementById('kpiVehicles')) document.getElementById('kpiVehicles').innerText = Math.ceil(totalPax / 6);
+        if(document.getElementById('kpiConfirmRate')) document.getElementById('kpiConfirmRate').innerText = confirmRate + '%';
+        if(document.getElementById('confirmBar')) document.getElementById('confirmBar').style.width = confirmRate + '%';
+    }
+
+    function renderCharts() {
+        if (chartInstances.status) chartInstances.status.destroy();
+        if (chartInstances.density) chartInstances.density.destroy();
+        if (chartInstances.volume) chartInstances.volume.destroy();
+
+        Chart.defaults.font.family = "'Segoe UI', Inter, sans-serif";
+        Chart.defaults.color = colors.muted;
+        Chart.defaults.scale.grid.color = '#f5f5f5';
+
+        let statusCount = { Confirmed: 0, Pending: 0, Cancelled: 0 };
+        realData.forEach(d => {
+            if (d.status.includes('Confirmed')) statusCount.Confirmed++;
+            else if (d.status.includes('Cancelled') || d.status.includes('❌')) statusCount.Cancelled++;
+            else statusCount.Pending++;
+        });
+
+        chartInstances.status = new Chart(document.getElementById('statusChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Confirmed', 'Pending', 'Cancelled'],
+                datasets: [{
+                    data: [statusCount.Confirmed, statusCount.Pending, statusCount.Cancelled],
+                    backgroundColor: [colors.success, colors.accent, colors.danger],
+                    borderWidth: 2, borderColor: '#ffffff', cutout: '75%'
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 6 } } } }
+        });
+
+        let timeGroups = {};
+        realData.forEach(d => {
+            if(!d.status.includes('Cancelled') && d.pickup && d.pickup !== '-' && d.pickup !== 'ว่าง') {
+                let parts = d.pickup.split(':');
+                if (parts.length >= 2) {
+                    let h = parseInt(parts[0], 10), m = parseInt(parts[1], 10);
+                    if (m >= 30) h += 1; if (h >= 24) h = 0;
+                    let roundedHour = String(h).padStart(2, '0') + ":00";
+                    timeGroups[roundedHour] = (timeGroups[roundedHour] || 0) + d.pax;
+                }
+            }
+        });
+
+        const sortedTimes = Object.keys(timeGroups).sort();
+        chartInstances.density = new Chart(document.getElementById('densityChart'), {
+            type: 'bar',
+            data: {
+                labels: sortedTimes,
+                datasets: [{ label: 'Pax (Pick Up)', data: sortedTimes.map(t => timeGroups[t]), backgroundColor: colors.primary, borderRadius: 2, barPercentage: 0.6 }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, border: { display: false } }, x: { border: { display: false } } } }
+        });
+
+        let dateGroups = {};
+        realData.forEach(d => {
+            if(!d.status.includes('Cancelled') && d.depDate && d.depDate !== '-' && d.depDate !== 'ว่าง') {
+                dateGroups[d.depDate] = (dateGroups[d.depDate] || 0) + d.pax;
+            }
+        });
+
+        const sortedDates = Object.keys(dateGroups).sort((a, b) => {
+            let pa = a.split('/'), pb = b.split('/'); if(pa.length !== 3 || pb.length !== 3) return 0;
+            return new Date(`${pa[2]}-${pa[1]}-${pa[0]}`) - new Date(`${pb[2]}-${pb[1]}-${pb[0]}`);
+        });
+
+        chartInstances.volume = new Chart(document.getElementById('volumeChart'), {
+            type: 'line',
+            data: {
+                labels: sortedDates,
+                datasets: [{
+                    label: 'Volume (Pax)', data: sortedDates.map(d => dateGroups[d]),
+                    borderColor: colors.accent, backgroundColor: 'rgba(212, 175, 55, 0.1)',
+                    fill: true, tension: 0.3, borderWidth: 2, pointBackgroundColor: colors.surface, pointBorderColor: colors.accent, pointRadius: 4
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, border: { display: false } }, x: { border: { display: false } } } }
+        });
+    }
+
+    // ครอบ escapeHtml ให้กับข้อมูล status ด้วย
+    function getStatusBadge(status) {
+        const safeStatus = escapeHtml(status);
+        if (safeStatus.includes('Confirmed')) return `<span class="px-2.5 py-1 bg-green-50 text-earth-success rounded text-[10px] uppercase tracking-wider font-bold">${safeStatus}</span>`;
+        if (safeStatus.includes('Cancelled')) return `<span class="px-2.5 py-1 bg-red-50 text-earth-danger rounded text-[10px] uppercase tracking-wider font-bold">${safeStatus}</span>`;
+        return `<span class="px-2.5 py-1 bg-yellow-50 text-earth-warning rounded text-[10px] uppercase tracking-wider font-bold">${safeStatus}</span>`;
+    }
+
+    function renderTable(data) {
+        const tbody = document.getElementById('tableBody');
+        if(data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-earth-muted text-sm">No records found.</td></tr>`; return;
+        }
+
+        let htmlContent = "";
+        data.slice(0, 100).forEach(row => {
+            const typeText = row.type === 'Guest' ? 'GUEST' : 'VENDOR';
+            htmlContent += `
+                <tr class="hover:bg-gray-50 transition-colors group cursor-pointer" onclick="openPanel('${escapeHtml(row.rawId)}')">
+                    <td class="py-4 px-6">
+                        <div class="font-medium text-earth-text">${escapeHtml(row.name)}</div>
+                        <div class="text-[10px] uppercase tracking-wider text-earth-muted mt-0.5">${escapeHtml(row.id)}</div>
+                    </td>
+                    <td class="py-4 px-6 text-earth-muted text-xs tracking-wider">${escapeHtml(typeText)}</td>
+                    <td class="py-4 px-6 text-earth-text">${escapeHtml(row.room)}</td>
+                    <td class="py-4 px-6">
+                        <div class="text-earth-text">${escapeHtml(row.flight)}</div>
+                        <div class="text-xs text-earth-muted mt-0.5">${escapeHtml(row.depDate)}</div>
+                    </td>
+                    <td class="py-4 px-6 font-medium text-earth-primary">${escapeHtml(row.pickup)}</td>
+                    <td class="py-4 px-6">${getStatusBadge(row.status)}</td>
+                    <td class="py-4 px-6 text-center">
+                        <span class="text-earth-accent opacity-0 group-hover:opacity-100 transition-opacity text-xs uppercase tracking-widest font-medium">View</span>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        if (data.length > 100) htmlContent += `<tr><td colspan="7" class="py-6 text-center text-xs text-earth-muted uppercase tracking-widest">Showing first 100 rows</td></tr>`;
+        tbody.innerHTML = htmlContent;
+    }
+
+    function openPanel(rawId) {
+        const record = realData.find(d => d.rawId === rawId);
+        if(!record) return;
+
+        // ครอบ escapeHtml ให้กับข้อมูลทุกตัวที่นำมาแสดง
+        const arrNoteHtml = record.arrNote ? escapeHtml(record.arrNote) : 'No remarks.';
+        const depNoteHtml = record.depNote ? escapeHtml(record.depNote) : 'No remarks.';
+
+        document.getElementById('panelContent').innerHTML = `
+            <div class="mb-8 text-center">
+                <div class="inline-block px-3 py-1 bg-earth-bg text-earth-muted text-[10px] uppercase tracking-widest rounded mb-3">${escapeHtml(record.type)} • ${escapeHtml(record.pax)} PAX</div>
+                <h3 class="text-2xl font-light text-earth-text mb-1">${escapeHtml(record.name)}</h3>
+                <p class="text-sm text-earth-muted">Room ${escapeHtml(record.room)}</p>
+                <div class="mt-4">${getStatusBadge(record.status)}</div>
+            </div>
+
+            <div class="space-y-6">
+                <div>
+                    <h4 class="text-[10px] font-bold text-earth-muted uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">Departure Details</h4>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-earth-bg p-4 rounded-lg">
+                            <span class="block text-[10px] uppercase tracking-widest text-earth-muted mb-1">Flight</span>
+                            <span class="font-medium text-sm block text-earth-text">${escapeHtml(record.flight)}</span>
+                            <span class="text-xs text-earth-muted mt-1 block">${escapeHtml(record.depDate)}</span>
+                        </div>
+                        <div class="bg-earth-bg p-4 rounded-lg">
+                            <span class="block text-[10px] uppercase tracking-widest text-earth-muted mb-1">Flight Time</span>
+                            <span class="font-medium text-lg block text-earth-text mt-1">${escapeHtml(record.time)}</span>
+                        </div>
+                        <div class="bg-earth-primary p-5 rounded-lg col-span-2 text-center text-white shadow-sm">
+                            <span class="block text-[10px] uppercase tracking-widest opacity-80 mb-1">Pick Up Time</span>
+                            <span class="text-3xl font-light tracking-wide">${escapeHtml(record.pickup)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-[10px] font-bold text-earth-muted uppercase tracking-widest mb-3 border-b border-gray-100 pb-2">Remarks</h4>
+                    <div class="space-y-3">
+                        <div class="p-4 border border-gray-100 rounded-lg">
+                            <span class="block text-[10px] font-bold uppercase tracking-widest text-earth-muted mb-2">Arrival</span>
+                            <p class="text-sm ${record.arrNote ? 'text-earth-text' : 'text-gray-400 italic'}">${arrNoteHtml}</p>
+                        </div>
+                        <div class="p-4 border border-gray-100 rounded-lg">
+                            <span class="block text-[10px] font-bold uppercase tracking-widest text-earth-muted mb-2">Departure</span>
+                            <p class="text-sm ${record.depNote ? 'text-earth-text' : 'text-gray-400 italic'}">${depNoteHtml}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById('sidePanel').classList.remove('translate-x-full');
+        const overlay = document.getElementById('overlay');
+        overlay.classList.remove('hidden');
+        setTimeout(() => overlay.classList.add('opacity-100'), 10);
+    }
+
+    function closePanel() {
+        document.getElementById('sidePanel').classList.add('translate-x-full');
+        const overlay = document.getElementById('overlay');
+        overlay.classList.remove('opacity-100');
+        setTimeout(() => overlay.classList.add('hidden'), 300);
+    }
+</script>

@@ -1,0 +1,162 @@
+<script>
+     // ==========================================
+     // เพิ่มฟังก์ชันป้องกัน XSS
+     // ==========================================
+     function escapeHtml(str) {
+       if (str === null || str === undefined) return '';
+       return String(str)
+         .replace(/&/g, '&amp;')
+         .replace(/</g, '&lt;')
+         .replace(/>/g, '&gt;')
+         .replace(/"/g, '&quot;')
+         .replace(/'/g, '&#39;');
+     }
+
+     let filteredRecords = [];
+     let selectedRecord = null;
+     let searchTimeout = null;
+     
+     window.onload = function() {
+       document.getElementById('resultSelect').disabled = true;
+       document.getElementById('statusMsg').innerText = "Ready! Search your Name or Room No.";
+       document.getElementById('statusMsg').style.color = "#333";
+     };
+     
+     function filterLocalData() {
+       let kw = document.getElementById('searchKey').value.trim().toLowerCase();
+       document.getElementById('detailCard').style.display = 'none';
+       if (kw.length === 0) {
+           filteredRecords = []; renderDropdown();
+           document.getElementById('statusMsg').innerText = "Please enter your Name or Room No."; document.getElementById('statusMsg').style.color = "#d4af37";
+           return;
+        }
+       document.getElementById('statusMsg').innerText = "Searching..."; document.getElementById('statusMsg').style.color = "#888";
+       clearTimeout(searchTimeout);
+       searchTimeout = setTimeout(() => {
+           google.script.run.withSuccessHandler(function(results) {
+             filteredRecords = results.map(r => { r.searchString = Object.values(r).join(" ").toLowerCase(); return r; });
+             document.getElementById('resultSelect').disabled = false;
+             if(results.length > 0) { document.getElementById('statusMsg').innerText = `Found ${results.length} record(s).`; document.getElementById('statusMsg').style.color = "#4a6b53"; } 
+             else { document.getElementById('statusMsg').innerText = `No record found for "${kw}"`; document.getElementById('statusMsg').style.color = "#8b0000"; }
+             renderDropdown();
+           }).searchGuestSecure(kw);
+        }, 350);
+      }
+      
+     function renderDropdown() {
+        let select = document.getElementById('resultSelect');
+        if (filteredRecords.length === 0) { select.innerHTML = '<option value="">-- No Data --</option>'; return; }
+        let optionsHtml = '<option value="">-- Select Your Name / Room --</option>';
+        filteredRecords.forEach((r, idx) => { 
+            // แก้ไขปัญหา XSS โดยการใช้ escapeHtml() กับข้อมูลที่รับมาจากเซิร์ฟเวอร์
+            optionsHtml += `<option value="${idx}">${escapeHtml(r.displayLabel)}</option>`; 
+        });
+        select.innerHTML = optionsHtml;
+     }
+     
+     function loadData() {
+        let idx = document.getElementById('resultSelect').value;
+        if (idx === "") { document.getElementById('detailCard').style.display = 'none'; return; }
+        let targetUuid = filteredRecords[idx].uuid;
+        document.getElementById('statusMsg').innerText = "Loading your details..."; document.getElementById('statusMsg').style.color = "#888"; document.getElementById('detailCard').style.display = 'none';
+        google.script.run
+          .withSuccessHandler(function(guestData) {
+             if (!guestData) { document.getElementById('statusMsg').innerText = "Data not found."; document.getElementById('statusMsg').style.color = "red"; return; }
+             selectedRecord = guestData;
+             selectedRecord['Pax'] = selectedRecord['Pax'] || filteredRecords[idx]['Pax']; selectedRecord['RoomNo'] = selectedRecord['RoomNo'] || filteredRecords[idx]['RoomNo'];
+             document.getElementById('valName').innerText = selectedRecord['Name'] || "-"; document.getElementById('valPax').innerText = selectedRecord['Pax'] || "-"; document.getElementById('valRoom').innerText = selectedRecord['RoomNo'] || "-"; document.getElementById('valArrDate').innerText = selectedRecord['ArrivalDate'] || "-"; document.getElementById('valArrFlight').innerText = selectedRecord['ArrivalFlight'] || "-"; document.getElementById('valArrTime').innerText = selectedRecord['ArrivalTime'] || "-"; document.getElementById('valDepDate').innerText = selectedRecord['DepartureDate'] || "-"; document.getElementById('valDepFlight').innerText = selectedRecord['DepartureFlight'] || "-"; document.getElementById('valDepTime').innerText = selectedRecord['DepartureTime'] || "-";
+             
+             // --- แก้ไขตรงนี้: แสดงคำว่า Self แทน TBC ---
+             let baseTime = selectedRecord['PickUptime'] || ""; 
+             let depFlight = (selectedRecord['DepartureFlight'] || "").toLowerCase();
+             if (depFlight.includes("self") || baseTime.toLowerCase().includes("self")) {
+                 baseTime = "Self"; 
+             } else if (!baseTime || baseTime === " " || baseTime === "-") {
+                 baseTime = "TBC"; 
+             }
+             document.getElementById('valPickUpTime').innerText = baseTime;
+             // ---------------------------------------------
+
+             let isConfirmed = selectedRecord['Status'] && selectedRecord['Status'].includes("Confirmed");
+             document.getElementById('actionSection').style.display = 'block'; document.getElementById('requestSection').style.display = 'none'; document.getElementById('reqRemarkInput').value = "";
+             let btn = document.getElementById('btnSubmitConfirm');
+             if (isConfirmed) { document.getElementById('confirmBoxContainer').style.display = 'none'; btn.innerText = "Confirmed"; btn.disabled = true; btn.style.backgroundColor = "#9a757a"; document.getElementById('remarkLink').style.display = 'none'; } 
+             else { document.getElementById('confirmBoxContainer').style.display = 'flex'; document.getElementById('chkConfirm').checked = false; btn.innerText = "Confirm Pick Up Time"; btn.disabled = true; btn.style.backgroundColor = "#691d27"; document.getElementById('remarkLink').style.display = 'block'; }
+             document.getElementById('detailCard').style.display = 'block'; document.getElementById('statusMsg').innerText = "";
+          })
+          .withFailureHandler(function(err) { document.getElementById('statusMsg').innerText = "Error loading data: " + err.message; document.getElementById('statusMsg').style.color = "red"; })
+          .getGuestDataForForm(targetUuid);
+     }
+     
+     function toggleBtn() {
+       let isChecked = document.getElementById('chkConfirm').checked; let btn = document.getElementById('btnSubmitConfirm'); btn.disabled = !isChecked;
+       if(isChecked) { btn.style.backgroundColor = "#50151d"; } else { btn.style.backgroundColor = "#691d27"; }
+     }
+     
+     function setFormFeedback(msg, isError = false) {
+       let feedbackEl = document.getElementById('formFeedbackMsg');
+       if (!feedbackEl) {
+           feedbackEl = document.createElement('div');
+           feedbackEl.id = 'formFeedbackMsg';
+           feedbackEl.style.marginTop = '10px';
+           feedbackEl.style.fontSize = '13px';
+           feedbackEl.style.fontWeight = 'bold';
+           feedbackEl.style.textAlign = 'center';
+           document.getElementById('requestSection').appendChild(feedbackEl);
+           document.getElementById('actionSection').appendChild(feedbackEl.cloneNode());
+       }
+       document.querySelectorAll('#formFeedbackMsg').forEach(el => {
+           el.innerText = msg;
+           el.style.color = isError ? "#8b0000" : "#4a6b53";
+       });
+     }
+
+     function submitConfirmation() {
+        let btn = document.getElementById('btnSubmitConfirm');
+        if (!selectedRecord || !selectedRecord.uuid) { setFormFeedback("No Data", true); return; }
+        selectedRecord['Status'] = "Confirmed";
+        document.getElementById('confirmBoxContainer').style.display = 'none'; document.getElementById('remarkLink').style.display = 'none';
+        btn.innerText = "Confirmed"; btn.style.backgroundColor = "#9a757a"; btn.disabled = true;
+        google.script.run
+         .withSuccessHandler(function(res) {
+           if (res !== "Confirmed!") { // เช็กค่า return ให้ตรงกับ Code.js (ลบช่องว่างส่วนเกิน)
+              setFormFeedback("Failed to confirm: " + res, true);
+              btn.disabled = false; btn.innerText = "Confirm Pick Up Time"; btn.style.backgroundColor = "#691d27";
+              document.getElementById('confirmBoxContainer').style.display = 'flex'; document.getElementById('remarkLink').style.display = 'block';
+           }
+        })
+        .withFailureHandler(function(err) {
+             setFormFeedback("Error: " + err.message, true);
+             btn.disabled = false; btn.innerText = "Confirm Pick Up Time"; btn.style.backgroundColor = "#691d27";
+             document.getElementById('confirmBoxContainer').style.display = 'flex'; document.getElementById('remarkLink').style.display = 'block';
+        })
+        .confirmPickUpTime(selectedRecord.uuid);
+     }
+     
+     function showRequestForm() { document.getElementById('actionSection').style.display = 'none'; document.getElementById('requestSection').style.display = 'block'; document.getElementById('reqRemarkInput').value = ""; }
+     function hideRequestForm() { document.getElementById('actionSection').style.display = 'block'; document.getElementById('requestSection').style.display = 'none'; }
+     
+     function submitRemark() {
+       let remarkMsg = document.getElementById('reqRemarkInput').value;
+       if (!remarkMsg || remarkMsg.trim() === "") { setFormFeedback("Please enter a note before submitting.", true); return; }
+       if (!selectedRecord || !selectedRecord.uuid) { setFormFeedback("Session expired or data missing. Please reload.", true); return; }
+       
+       setFormFeedback("Submitting your note...");
+       let currentRm = selectedRecord['DepRM'] || "";
+       selectedRecord['DepRM'] = currentRm ? currentRm + " | " + remarkMsg.trim() : remarkMsg.trim();
+       
+       google.script.run
+         .withSuccessHandler(function(res) {
+              if (res !== "Done") {
+                  setFormFeedback("Failed to submit note: " + res, true);
+              } else {
+                 document.getElementById('requestSection').style.display = 'none';
+                 document.getElementById('actionSection').style.display = 'block';
+                 setFormFeedback("Note submitted successfully.");
+                 setTimeout(() => { document.querySelectorAll('#formFeedbackMsg').forEach(el => el.innerText = ""); }, 3000);
+             }
+         })
+         .withFailureHandler(function(err) { setFormFeedback("System Error: " + err.message, true); })
+         .submitGuestRemark(selectedRecord.uuid, remarkMsg);
+     }
+</script>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  
+  <!-- ดึงไฟล์ CSS เข้ามาทำงาน -->
+  <?!= include('WASenderSidebar_CSS'); ?>
+</head>
+<body>
+<textarea id="msgTemplate">Dear Khun {name},
+
+We are the Transportation Team. Please check your pick-up time here:
+[https://tinyurl.com/29dnh4re]
+
+Should you require further assistance or have any issues, please contact the Hospitality Desk.
+
+Best regards,
+Transportation Team</textarea>
+  
+  <div class="status-text" id="statusCount">Connecting...</div>
+  <div class="guest-list" id="listContainer"><div id="loading">Loading guests...</div></div>
+
+  <!-- ดึงไฟล์ JS เข้ามาทำงาน (เอาไว้ล่างสุดเสมอ) -->
+  <?!= include('WASenderSidebar_JS'); ?>
+</body>
+</html>
